@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+from urlparse import urlparse, urlunparse
 from flask import request, redirect, current_app
 
 YEAR_IN_SECS = 31536000
@@ -8,10 +8,11 @@ YEAR_IN_SECS = 31536000
 class SSLify(object):
     """Secures your Flask App."""
 
-    def __init__(self, app=None, age=YEAR_IN_SECS, subdomains=False, permanent=False):
+    def __init__(self, app=None, age=YEAR_IN_SECS, subdomains=False, permanent=False, add_www=False):
         self.hsts_age = age
         self.hsts_include_subdomains = subdomains
         self.permanent = permanent
+        self.add_www = add_www
 
         if app is not None:
             self.init_app(app)
@@ -33,7 +34,16 @@ class SSLify(object):
         return hsts_policy
 
     def redirect_to_ssl(self):
-        """Redirect incoming requests to HTTPS."""
+        url = request.url
+        modified = False
+        code = 301 if self.permanent else 302
+        if self.add_www:
+            urlparts = urlparse(url)
+            if not urlparts.netloc.startswith('www.'):
+                urlparts_list = list(urlparts)
+                urlparts_list[1] = 'www.' + urlparts.netloc
+                url = urlunparse(urlparts_list)
+                modified = True
         # Should we redirect?
         criteria = [
             request.is_secure,
@@ -42,14 +52,12 @@ class SSLify(object):
         ]
 
         if not any(criteria):
-            if request.url.startswith('http://'):
-                url = request.url.replace('http://', 'https://', 1)
-                code = 302
-                if self.permanent:
-                    code = 301
-                r = redirect(url, code=code)
+            if url.startswith('http://'):
+                url = url.replace('http://', 'https://', 1)
+                modified = True
 
-                return r
+        if modified:
+            return redirect(url, code=code)
 
     def set_hsts_header(self, response):
         """Adds HSTS header to each response."""
